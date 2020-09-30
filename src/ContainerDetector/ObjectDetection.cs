@@ -114,7 +114,10 @@ namespace ContainerDetector
                 return Postprocess(result.Outputs["output"] as TensorFloat);
             }
         }
-
+        public IList<PredictionModel> PredictImageAsync2(TensorFloat outputModel)
+        {
+            return Postprocess(outputModel);
+        }
         private class ExtractedBoxes
         {
             public List<BoundingBox> Boxes { get; }

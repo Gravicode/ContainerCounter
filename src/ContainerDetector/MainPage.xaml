@@ -8,10 +8,8 @@
     mc:Ignorable="d" 
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid>
-        <Canvas Name="PreviewCanvas" Grid.Row="0"   Width="640" Height="480"  Background="Gray" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,0,0,0" Visibility="Visible">
-            <CaptureElement x:Name="previewElement"  Margin="0,0,0,0" HorizontalAlignment="Left" Visibility="Visible"/>
-        </Canvas>
-        <Canvas Name="UIOverlayCanvas1" Width="640" Height="480" Canvas.ZIndex="0" HorizontalAlignment="Left" VerticalAlignment="Top" />
+        <CaptureElement x:Name="VideoPreview" SizeChanged="VideoPreview_SizeChanged" HorizontalAlignment="Center" VerticalAlignment="Top"/>
+        <Canvas Name="UIOverlayCanvas1" Canvas.ZIndex="0" HorizontalAlignment="Center" VerticalAlignment="Top" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom">
             <StackPanel.Resources>
                 <Style TargetType="TextBlock">
