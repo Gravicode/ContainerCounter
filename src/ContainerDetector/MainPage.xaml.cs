@@ -1,22 +1,20 @@
-﻿using Microsoft.Toolkit.Uwp.Helpers;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices.WindowsRuntime;
+using System.Threading;
 using System.Threading.Tasks;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
+using Windows.Graphics.Imaging;
+using Windows.Media;
+using Windows.Media.Capture;
+using Windows.Media.Capture.Frames;
+using Windows.Media.MediaProperties;
 using Windows.Storage;
+using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Controls.Primitives;
-using Windows.UI.Xaml.Data;
-using Windows.UI.Xaml.Input;
-using Windows.UI.Xaml.Media;
-using Windows.UI.Xaml.Navigation;
 
 // The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -81,17 +79,7 @@ namespace ContainerDetector
             // Load the model
             await this.LoadModelAsync();
 
-            // Start the camera video preview
-            var availableFrameSourceGroups = await CameraHelper.GetFrameSourceGroupsAsync();
-            if (availableFrameSourceGroups != null)
-            {
-                CameraHelper cameraHelper = new CameraHelper() { FrameSourceGroup = availableFrameSourceGroups.FirstOrDefault() };
-                CamPreview.PreviewFailed += CamPreview_PreviewFailed;
-                await CamPreview.StartAsync(cameraHelper);
-                CamPreview.CameraHelper.FrameArrived += CameraHelper_FrameArrived;
-            }
-
-            //await StartPreviewAsync();
+            StartCapture();
         }
 
       
@@ -146,14 +134,209 @@ namespace ContainerDetector
       
        
 
-        private async void CameraHelper_FrameArrived(object sender, Microsoft.Toolkit.Uwp.Helpers.FrameEventArgs e)
+
+      
+
+        private void PreviewCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            //if (Interlocked.CompareExchange(ref this.processingFlag, 1, 0) == 0)
+            float previewAspectRatio = (float)(PreviewCanvas.ActualWidth / PreviewCanvas.ActualHeight);
+            var cameraAspectRatio = previewAspectRatio;
+            UIOverlayCanvas1.Width = cameraAspectRatio >= previewAspectRatio ? PreviewCanvas.ActualWidth : PreviewCanvas.ActualHeight * cameraAspectRatio;
+            UIOverlayCanvas1.Height = cameraAspectRatio >= previewAspectRatio ? PreviewCanvas.ActualWidth / cameraAspectRatio : PreviewCanvas.ActualHeight;
+
+            m_bboxRenderer.ResizeContent(e);
+        }
+  
+        //camera
+        private MediaCapture mediaCapture;
+        private MediaFrameReader mediaFrameReader;
+        private readonly string PHOTO_FILE_NAME = "photo.jpg";
+        private readonly string VIDEO_FILE_NAME = "video.mp4";
+        private bool isPreviewing;
+        private SoftwareBitmap backBuffer;
+        private bool taskRunning = false;
+        private Thread decodingThread;
+
+
+      
+        VideoFrame previewFrame;
+        VideoFrame videoFrame;
+       
+        async void StartCapture()
+        {
+
+            try
+            {
+                if (mediaCapture != null)
+                {
+                    // Cleanup MediaCapture object
+                    if (isPreviewing)
+                    {
+                        await mediaCapture.StopPreviewAsync();
+                        //captureImage.Source = null;
+                        //playbackElement.Source = null;
+                        isPreviewing = false;
+                    }
+
+                    mediaCapture.Dispose();
+                    mediaCapture = null;
+                }
+
+                StatusBlock.Text = "Initializing camera to capture audio and video...";
+                // Use default initialization
+                mediaCapture = new MediaCapture();
+                await mediaCapture.InitializeAsync();
+
+                // Set callbacks for failure and recording limit exceeded
+                StatusBlock.Text = "Device successfully initialized for video recording!";
+                mediaCapture.Failed += new MediaCaptureFailedEventHandler(mediaCapture_Failed);
+                //mediaCapture.RecordLimitationExceeded += new Windows.Media.Capture.RecordLimitationExceededEventHandler(mediaCapture_RecordLimitExceeded);
+
+                // Start Preview                
+                previewElement.Source = mediaCapture;
+                await mediaCapture.StartPreviewAsync();
+                isPreviewing = true;
+                StatusBlock.Text = "Camera preview succeeded";
+                // Get information about the preview
+                var previewProperties = mediaCapture.VideoDeviceController.GetMediaStreamProperties(MediaStreamType.VideoPreview) as VideoEncodingProperties;
+
+                // Create a video frame in the desired format for the preview frame
+                videoFrame = new VideoFrame(BitmapPixelFormat.Bgra8, (int)previewProperties.Width, (int)previewProperties.Height);
+
+               StartEngine();
+            }
+            catch (Exception ex)
+            {
+                StatusBlock.Text = "Unable to initialize camera for audio/video mode: " + ex.Message;
+            }
+        }
+        private async void mediaCapture_Failed(MediaCapture currentCaptureObject, MediaCaptureFailedEventArgs currentFailure)
+        {
+            await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
             {
                 try
                 {
-                    var videoFrame = e.VideoFrame;
+                    StatusBlock.Text = "MediaCaptureFailed: " + currentFailure.Message;
 
+
+                }
+                catch (Exception)
+                {
+                }
+                finally
+                {
+
+                    StatusBlock.Text += "\nCheck if camera is diconnected. Try re-launching the app";
+                }
+            });
+        }
+        #region Cam
+        private async void Cleanup()
+        {
+            if (mediaCapture != null)
+            {
+                // Cleanup MediaCapture object
+                if (isPreviewing)
+                {
+                    await mediaCapture.StopPreviewAsync();
+                    //captureImage.Source = null;
+                    //playbackElement.Source = null;
+                    isPreviewing = false;
+                }
+
+                mediaCapture.Dispose();
+                mediaCapture = null;
+            }
+
+        }
+        #endregion
+        #region QR
+
+        SoftwareBitmap currentBitmapForDecoding;
+
+        private Object thisLock = new Object();
+
+
+        private async void InferenceImage()
+        {
+
+
+            while (true)
+            {
+                if (videoFrame == null) continue;
+                await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async() =>
+                {
+                   
+                    previewFrame = await mediaCapture.GetPreviewFrameAsync(videoFrame);
+                    if (previewFrame.SoftwareBitmap != null)
+                    {
+                        currentBitmapForDecoding = previewFrame.SoftwareBitmap;
+
+                    }
+                    if (currentBitmapForDecoding != null)
+                    {
+                        DoRecognize(currentBitmapForDecoding);
+
+                    }
+                    //currentBitmapForDecoding.Dispose();
+                    currentBitmapForDecoding = null;
+                });
+                Thread.Sleep(500);
+
+            }
+
+        }
+
+
+
+
+
+        async void StartEngine()
+        {
+           
+            //start decoding
+            decodingThread = new Thread(InferenceImage);
+            decodingThread.Start();
+
+        }
+
+        // Do this when you start your application
+        static int mainThreadId;
+
+        // If called in the non main thread, will return false;
+        public static bool IsMainThread
+        {
+            get { return System.Threading.Thread.CurrentThread.ManagedThreadId == mainThreadId; }
+        }
+        #endregion
+
+
+        /// <summary>
+        /// Trigger file picker and image evaluation
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private async void DoRecognize(SoftwareBitmap softwareBitmap)
+        {
+
+            try
+            {
+                // Load the model
+                //await Task.Run(async () => await LoadModelAsync());
+
+
+                softwareBitmap = SoftwareBitmap.Convert(softwareBitmap, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+                
+                // Display the image
+                //SoftwareBitmapSource imageSource = new SoftwareBitmapSource();
+                //await imageSource.SetBitmapAsync(softwareBitmap);
+                //UIPreviewImage.Source = imageSource;
+
+                // Encapsulate the image within a VideoFrame to be bound and evaluated
+                VideoFrame videoFrame = VideoFrame.CreateWithSoftwareBitmap(softwareBitmap);
+
+                await Task.Run(async () =>
+                {
                     if (videoFrame != null)
                     {
                         // If there is a frame, set it as input to the model
@@ -165,37 +348,16 @@ namespace ContainerDetector
                         // Do something with the model output
                         await this.ProcessOutputAsync(evalOutput);
                     }
+                });
+            }
+            catch (Exception ex)
+            {
+                await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => StatusBlock.Text = $"error: {ex.Message}");
 
-                }
-                finally
-                {
-                    //Interlocked.Exchange(ref this.processingFlag, 0);
-                }
             }
         }
 
-      
-
-        private void CamPreview_SizeChanged(object sender, SizeChangedEventArgs e)
-        {
-            float previewAspectRatio = (float)(CamPreview.ActualWidth / CamPreview.ActualHeight);
-            var cameraAspectRatio = previewAspectRatio;
-            UIOverlayCanvas1.Width = cameraAspectRatio >= previewAspectRatio ? CamPreview.ActualWidth : CamPreview.ActualHeight * cameraAspectRatio;
-            UIOverlayCanvas1.Height = cameraAspectRatio >= previewAspectRatio ? CamPreview.ActualWidth / cameraAspectRatio : CamPreview.ActualHeight;
-
-            m_bboxRenderer.ResizeContent(e);
-        }
-  
-
-      
-
-
-      
-
-        private void CamPreview_PreviewFailed(object sender, Microsoft.Toolkit.Uwp.UI.Controls.PreviewFailedEventArgs e)
-        {
-            var errorMessage = e.Error;
-        }
+       
 
     }
 }
