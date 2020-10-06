@@ -53,7 +53,7 @@ namespace ContainerDetector
 
         public float Probability { get; private set; }
         public string TagName { get; private set; }
-        public BoundingBox BoundingBox { get; private set; }
+        public BoundingBox BoundingBox { get; set; }
     }
 
     public class ObjectDetection

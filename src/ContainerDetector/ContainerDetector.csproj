@@ -119,12 +119,14 @@
     <Compile Include="App.xaml.cs">
       <DependentUpon>App.xaml</DependentUpon>
     </Compile>
-    <Compile Include="BoundingBoxRenderer.cs" />
+    <Compile Include="Helpers\BoundingBoxRenderer.cs" />
+    <Compile Include="Helpers\Geometry.cs" />
+    <Compile Include="Helpers\Tracker.cs" />
     <Compile Include="MainPage.xaml.cs">
       <DependentUpon>MainPage.xaml</DependentUpon>
     </Compile>
-    <Compile Include="mask.cs" />
-    <Compile Include="ObjectDetection.cs" />
+    <Compile Include="Helpers\mask.cs" />
+    <Compile Include="Helpers\ObjectDetection.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

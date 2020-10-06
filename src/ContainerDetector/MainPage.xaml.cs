@@ -1,4 +1,5 @@
-﻿using System;
+﻿using ContainerDetector.Helpers;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -12,6 +13,7 @@ using Windows.Devices.Enumeration;
 using Windows.Graphics.Display;
 using Windows.Media.Capture;
 using Windows.Media.Capture.Frames;
+using Windows.Networking.Sockets;
 using Windows.Storage;
 using Windows.System.Display;
 using Windows.UI.Core;
@@ -29,7 +31,7 @@ namespace ContainerDetector
     {
 
 
-
+        static Tracker tracker;
         private BoundingBoxRenderer m_bboxRenderer = null;
         maskModel model1;
 
@@ -75,6 +77,9 @@ namespace ContainerDetector
             {
                 m_bboxRenderer.Render(predictions);
             }
+            tracker.DoTracking(predictions);
+            m_bboxRenderer.RenderTrail(ref tracker);
+
             /*
             // Get the label and loss from the output
             string label = evalOutput.classLabel.GetAsVectorView()[0];
@@ -143,8 +148,10 @@ namespace ContainerDetector
         /// <param name="e"></param>
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
-            // Load the model
+            if (tracker == null)
+                tracker = new Tracker(new BoundingBox(0, 0, (float)UIOverlayCanvas1.ActualWidth, (float)UIOverlayCanvas1.ActualHeight)); 
 
+            // Load the model
             await this.LoadModelAsync();
 
 
@@ -321,12 +328,12 @@ namespace ContainerDetector
                     using (var frame = sender.TryAcquireLatestFrame())
                     using (var videoFrame = frame.VideoMediaFrame?.GetVideoFrame())
                     {
-                        if (videoFrame != null )
+                        if (videoFrame != null)
                         {
                             // If there is a frame, set it as input to the model
                             maskInput input = new maskInput();
-                            input.data = ImageFeatureValue.CreateFromVideoFrame( videoFrame);
-                           
+                            input.data = ImageFeatureValue.CreateFromVideoFrame(videoFrame);
+
                             // Evaluate the input data
                             var outData = await model1.EvaluateAsync(input);
                             var evalOutput = model.PredictImageAsync2(outData.model_outputs0);
@@ -336,7 +343,7 @@ namespace ContainerDetector
                                    await this.ProcessOutputAsync(evalOutput);
                                });
 
-                           
+
                             /*
                             // Evaluate the input data
                             var evalOutput = await model.PredictImageAsync(videoFrame);

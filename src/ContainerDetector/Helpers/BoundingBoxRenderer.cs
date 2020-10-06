@@ -1,5 +1,7 @@
 ﻿// Copyright (C) Microsoft Corporation. All rights reserved.
 
+using ContainerDetector.Helpers;
+using System;
 using System.Collections.Generic;
 using Windows.Foundation;
 using Windows.UI;
@@ -24,8 +26,8 @@ namespace ContainerDetector
         // Pre-populate rectangles/textblocks to avoid clearing and re-creating on each frame
         private Rectangle[] m_rectangles;
         private TextBlock[] m_textBlocks;
-   
 
+        private List<Line> m_lines;
       
         /// <summary>
         /// </summary>
@@ -39,8 +41,8 @@ namespace ContainerDetector
 
             m_rectangles = new Rectangle[maxBoxes];
             m_textBlocks = new TextBlock[maxBoxes];
-         
 
+            m_lines = new List<Line>();
        
             if (colorBrush == null)
             {
@@ -75,12 +77,42 @@ namespace ContainerDetector
                
             }
         }
+        public void RenderTrail(ref Tracker tracker)
+        {
+            var rnd = new Random();
+            //clear line
+            foreach (var line in m_lines)
+            {
+                m_canvas.Children.Remove(line);
+            }
+            m_lines.Clear();
+            //draw line
+            foreach (var item in tracker.Objects)
+            {
+                var colorBrush = new SolidColorBrush(Color.FromArgb(255, (byte)rnd.Next(1, 255), (byte)rnd.Next(1, 255), (byte)rnd.Next(1, 255)));
+                if (item.Trails.Count > 1)
+                {
+                    for (int i = 0; i < item.Trails.Count - 1; i++)
+                    {
+                        var newline = new Line();
+                        (newline.X1, newline.Y1) = (item.Trails[i].X, item.Trails[i].Y);
+                        (newline.X2, newline.Y2) = (item.Trails[i + 1].X, item.Trails[i + 1].Y);
 
-        /// <summary>
-        /// Render bounding boxes from ObjectDetections
-        /// </summary>
-        /// <param name="detections"></param>
-        public void Render(IList<PredictionModel> detections)
+                        newline.Stroke = colorBrush;
+                        newline.StrokeThickness = 2;
+                        // Hide
+                        newline.Visibility = Visibility.Visible;
+                        m_lines.Add(newline);
+                        m_canvas.Children.Add(newline);
+                    }
+                }
+            }
+        }
+            /// <summary>
+            /// Render bounding boxes from ObjectDetections
+            /// </summary>
+            /// <param name="detections"></param>
+            public void Render(IList<PredictionModel> detections)
         {
             if (detections == null) return;
             int i = 0;
