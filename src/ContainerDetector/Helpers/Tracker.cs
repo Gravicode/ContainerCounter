@@ -11,8 +11,9 @@ namespace ContainerDetector.Helpers
 {
     public class Tracker
     {
-        readonly TimeSpan TimeLimit = new TimeSpan(0,0,5); 
-        const int DistanceLimit = 200; // in pixels
+        public List<RegionData> Regions { get; set; }
+        readonly TimeSpan TimeLimit = new TimeSpan(0, 0, 5);
+        const int DistanceLimit = 300; // in pixels
         public List<TrackedObject> Objects { get; set; }
 
         public Point[] Area { get; set; }
@@ -33,26 +34,41 @@ namespace ContainerDetector.Helpers
             }
         }
         public int MaxTrackedObject { get; set; }
-        public Tracker(BoundingBox Area, int MaxObject=10)
+        public Tracker(BoundingBox Area, int MaxObject = 10)
         {
             this.ObservationArea = Area;
             this.MaxTrackedObject = MaxObject;
             this.Objects = new List<TrackedObject>();
+            this.Regions = new List<RegionData>();
         }
-        public bool DoTracking(IList<PredictionModel> Output)
+
+        public void AddRegion(BoundingBox box)
+        {
+            var newRegion = new RegionData();
+            newRegion.ID = Regions.Count;
+            newRegion.Area = RegionData.CreateFromBox(box);
+            Regions.Add(newRegion);
+        }
+
+        /// <summary>
+        /// counter = how many object change to other region
+        /// </summary>
+        /// <param name="Output"></param>
+        /// <returns></returns>
+        public (bool changes, int counter) DoTracking(IList<PredictionModel> Output)
         {
             int changes = 0;
             //resize 
-            for (int i =0;i<Output.Count;i++)
+            for (int i = 0; i < Output.Count; i++)
             {
                 var item = Output[i];
-                item.BoundingBox = new BoundingBox(item.BoundingBox.Left*ObservationArea.Width, item.BoundingBox.Top * ObservationArea.Height, item.BoundingBox.Width * ObservationArea.Width, item.BoundingBox.Height * ObservationArea.Height);                               
+                item.BoundingBox = new BoundingBox(item.BoundingBox.Left * ObservationArea.Width, item.BoundingBox.Top * ObservationArea.Height, item.BoundingBox.Width * ObservationArea.Width, item.BoundingBox.Height * ObservationArea.Height);
             }
             //update object trail if any
             changes = UpdateTrails(ref Output);
 
             //add new object if in area observation
-            foreach(var item in Output)
+            foreach (var item in Output)
             {
                 var newObj = new TrackedObject(item.TagName);
                 newObj.UpdateTrail(item.BoundingBox);
@@ -62,34 +78,55 @@ namespace ContainerDetector.Helpers
                     changes++;
                 }
             }
+            
 
             //remove object if it's outside or not updated for a long time
             var removed = new List<TrackedObject>();
-          
-            foreach(var item in Objects)
-            { 
+
+            foreach (var item in Objects)
+            {
                 //based on last update
                 var ts = DateTime.Now - item.LastUpdate;
                 if (ts > TimeLimit)
                 {
                     removed.Add(item);
                 } //if it's outside observation area
-                else if(!Geometry.IsPointInPolygon( Area, item.Center))
+                else if (!Geometry.IsPointInPolygon(Area, item.Center))
                 {
                     removed.Add(item);
                 }
             }
-            foreach(var item in removed)
+            foreach (var item in removed)
             {
                 Objects.Remove(item);
             }
+            //assign region and maybe counting object
+            int counter = 0;
+            foreach (var item in Objects)
+            {
+                //check all object
+                foreach(var region in Regions)
+                {
+                    //if item is inside region
+                    if (Geometry.IsPointInPolygon(region.Area, item.Center))
+                    {
+                        //if the old region is not same with new region
+                        if(item.RegionID!=RegionData.DefaultRegionID && item.RegionID != region.ID)
+                        {
+                            counter++;
+                        }
+                        item.RegionID = region.ID;
+                    }
+                }
+            }
             //Debug.WriteLine("tracked obj : "+Objects.Count);
-            return changes > 0;
+            var res = changes > 0;
+            return (res,counter);
         }
         int UpdateTrails(ref IList<PredictionModel> Output)
         {
             var Updated = new List<PredictionModel>();
-            foreach(var item in Objects)
+            foreach (var item in Objects)
             {
                 foreach (var output1 in Output)
                 {
@@ -107,7 +144,7 @@ namespace ContainerDetector.Helpers
             }
             int changes = Updated.Count;
             //remove all updated item, and it will be assigned as new object
-            foreach(var item in Updated)
+            foreach (var item in Updated)
             {
                 Output.Remove(item);
             }
@@ -128,7 +165,8 @@ namespace ContainerDetector.Helpers
         public double Direction { get; set; }
         public Point Center { get; set; }
         BoundingBox area;
-        public BoundingBox Area { 
+        public BoundingBox Area
+        {
             get
             {
                 return area;
@@ -136,14 +174,14 @@ namespace ContainerDetector.Helpers
             set
             {
                 area = value;
-                Center = new Point(area.Left+area.Width/2, area.Top+area.Height/2);
+                Center = new Point(area.Left + area.Width / 2, area.Top + area.Height / 2);
             }
         }
         public TrackedObject(string TagName)
         {
             this.Tag = TagName;
             Trails = new List<Point>();
-            
+
         }
         public void UpdateTrail(BoundingBox newPosition)
         {
@@ -159,7 +197,7 @@ namespace ContainerDetector.Helpers
                 Trails.RemoveAt(0);
             }
         }
-        
+
     }
 
     public class RegionData
@@ -167,5 +205,13 @@ namespace ContainerDetector.Helpers
         public const int DefaultRegionID = -999;
         public Point[] Area { get; set; }
         public int ID { get; set; }
+
+        public static Point[] CreateFromBox(BoundingBox value)
+        {
+            var points = new Point[] { new Point(value.Left,value.Top), new Point(value.Left+value.Width, value.Top),
+                new Point(value.Left+value.Width,value.Top+value.Height),new Point(value.Left,value.Top+value.Height)
+                };
+            return points;
+        }
     }
 }

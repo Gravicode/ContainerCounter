@@ -30,7 +30,7 @@ namespace ContainerDetector
     public sealed partial class MainPage : Page, INotifyPropertyChanged
     {
 
-
+        static int TotalCount = 0;
         static Tracker tracker;
         private BoundingBoxRenderer m_bboxRenderer = null;
         maskModel model1;
@@ -77,8 +77,10 @@ namespace ContainerDetector
             {
                 m_bboxRenderer.Render(predictions);
             }
-            tracker.DoTracking(predictions);
+            var res = tracker.DoTracking(predictions);
             m_bboxRenderer.RenderTrail(ref tracker);
+            TotalCount += res.counter;
+            TxtCounter.Text = $"counter : {TotalCount}";
 
             /*
             // Get the label and loss from the output
@@ -149,8 +151,12 @@ namespace ContainerDetector
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             if (tracker == null)
-                tracker = new Tracker(new BoundingBox(0, 0, (float)UIOverlayCanvas1.ActualWidth, (float)UIOverlayCanvas1.ActualHeight)); 
-
+            {
+                tracker = new Tracker(new BoundingBox(0, 0, (float)UIOverlayCanvas1.ActualWidth, (float)UIOverlayCanvas1.ActualHeight));
+                //add sample region (top and bottom)
+                tracker.AddRegion(new BoundingBox(0, 0, (float)UIOverlayCanvas1.ActualWidth, (float)UIOverlayCanvas1.ActualHeight/2));
+                tracker.AddRegion(new BoundingBox(0, (float)UIOverlayCanvas1.ActualHeight / 2, (float)UIOverlayCanvas1.ActualWidth, (float)UIOverlayCanvas1.ActualHeight));
+            }
             // Load the model
             await this.LoadModelAsync();
 
