@@ -116,6 +116,8 @@ namespace ContainerDetector.Helpers
                             counter++;
                         }
                         item.RegionID = region.ID;
+                        //one object can only contain in one region
+                        continue;
                     }
                 }
             }

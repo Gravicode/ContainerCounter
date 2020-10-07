@@ -155,7 +155,7 @@ namespace ContainerDetector
                 tracker = new Tracker(new BoundingBox(0, 0, (float)UIOverlayCanvas1.ActualWidth, (float)UIOverlayCanvas1.ActualHeight));
                 //add sample region (top and bottom)
                 tracker.AddRegion(new BoundingBox(0, 0, (float)UIOverlayCanvas1.ActualWidth, (float)UIOverlayCanvas1.ActualHeight/2));
-                tracker.AddRegion(new BoundingBox(0, (float)UIOverlayCanvas1.ActualHeight / 2, (float)UIOverlayCanvas1.ActualWidth, (float)UIOverlayCanvas1.ActualHeight));
+                tracker.AddRegion(new BoundingBox(0, (float)UIOverlayCanvas1.ActualHeight / 2, (float)UIOverlayCanvas1.ActualWidth, (float)UIOverlayCanvas1.ActualHeight/2));
             }
             // Load the model
             await this.LoadModelAsync();
