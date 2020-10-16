@@ -33,12 +33,12 @@ namespace ContainerDetector
         static int TotalCount = 0;
         static Tracker tracker;
         private BoundingBoxRenderer m_bboxRenderer = null;
-        maskModel model1;
+        truckModel model1;
 
         // Model
         private ObjectDetection model = null;
         // File name of the ONNX model. This must be in the Assets folder for the project
-        private string modelFileName = "mask.onnx";
+        private string modelFileName = "truck.onnx";
 
 
 
@@ -59,9 +59,10 @@ namespace ContainerDetector
             StorageFile modelFile = await InstallationFolder.GetFileAsync(fname);
             if (File.Exists(file.Path))
             {
-                model = new ObjectDetection(new string[] { "mask", "nomask" });//await ONNXModel.CreateONNXModel(file);
+                //"mask", "nomask"
+                model = new ObjectDetection(new string[] { "Container", "Truck Container" });//await ONNXModel.CreateONNXModel(file);
                 await model.Init(modelFile);
-                model1 = await maskModel.CreateFromStreamAsync(modelFile);
+                model1 = await truckModel.CreateFromStreamAsync(modelFile);
             }
 
         }
@@ -211,6 +212,7 @@ namespace ContainerDetector
                     .First();
                 this.frameReader =
                     await this.mediaCapture.CreateFrameReaderAsync(frameSource.Value);
+                
                 // Set up handler for frames
                 this.frameReader.FrameArrived += OnFrameArrived;
                 // Start the FrameReader
@@ -337,7 +339,7 @@ namespace ContainerDetector
                         if (videoFrame != null)
                         {
                             // If there is a frame, set it as input to the model
-                            maskInput input = new maskInput();
+                            truckInput input = new truckInput();
                             input.data = ImageFeatureValue.CreateFromVideoFrame(videoFrame);
 
                             // Evaluate the input data
