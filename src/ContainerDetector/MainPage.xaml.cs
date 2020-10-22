@@ -10,7 +10,9 @@ using System.Threading.Tasks;
 using Windows.AI.MachineLearning;
 using Windows.ApplicationModel;
 using Windows.Devices.Enumeration;
+using Windows.Foundation;
 using Windows.Graphics.Display;
+using Windows.Media;
 using Windows.Media.Capture;
 using Windows.Media.Capture.Frames;
 using Windows.Networking.Sockets;
@@ -40,7 +42,13 @@ namespace ContainerDetector
         // File name of the ONNX model. This must be in the Assets folder for the project
         private string modelFileName = "truck.onnx";
 
+        #region framecapture
 
+        private MediaFrameSource _source;
+        private FrameRenderer _frameRenderer;
+        private bool _streaming = false;
+
+        #endregion
 
 
 
@@ -74,15 +82,17 @@ namespace ContainerDetector
         /// <returns></returns>
         async Task ProcessOutputAsync(IList<PredictionModel> predictions)//ONNXModelOutput evalOutput
         {
-            if (predictions != null && predictions.Count > 0)
+            //filter only truck
+            var onlyTrucks = predictions.Where(x => x.TagName == "Truck Container").ToList();
+            if (onlyTrucks != null && onlyTrucks.Count > 0)
             {
-                m_bboxRenderer.Render(predictions);
-            }
-            var res = tracker.DoTracking(predictions);
-            m_bboxRenderer.RenderTrail(ref tracker);
-            TotalCount += res.counter;
-            TxtCounter.Text = $"counter : {TotalCount}";
+                m_bboxRenderer.Render(onlyTrucks);
 
+                var res = tracker.DoTracking(onlyTrucks);
+                m_bboxRenderer.RenderTrail(ref tracker);
+                TotalCount += res.counter;
+                TxtCounter.Text = $"counter : {TotalCount}";
+            }
             /*
             // Get the label and loss from the output
             string label = evalOutput.classLabel.GetAsVectorView()[0];
@@ -105,7 +115,7 @@ namespace ContainerDetector
             var cameraAspectRatio = previewAspectRatio;
             UIOverlayCanvas1.Width = cameraAspectRatio >= previewAspectRatio ? VideoPreview.ActualWidth : VideoPreview.ActualHeight * cameraAspectRatio;
             UIOverlayCanvas1.Height = cameraAspectRatio >= previewAspectRatio ? VideoPreview.ActualWidth / cameraAspectRatio : VideoPreview.ActualHeight;
-
+           
             m_bboxRenderer.ResizeContent(e);
         }
 
@@ -151,22 +161,33 @@ namespace ContainerDetector
         /// <param name="e"></param>
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
+            await InitAll();
+        }
+
+       
+        public float xWidth { get; set; } = 1200f;
+        public float xHeight { get; set; } = 900f;
+        async Task InitAll()
+        {
             if (tracker == null)
             {
-                tracker = new Tracker(new BoundingBox(0, 0, (float)UIOverlayCanvas1.ActualWidth, (float)UIOverlayCanvas1.ActualHeight));
+                //this.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                //this.Arrange(new Windows.Foundation.Rect(0, 0, this.DesiredSize.Width, this.DesiredSize.Height));
+                //ResizeScreen(null);
+                tracker = new Tracker(new BoundingBox(0, 0, 1200f, 900f));
                 //add sample region (top and bottom)
-                tracker.AddRegion(new BoundingBox(0, 0, (float)UIOverlayCanvas1.ActualWidth, (float)UIOverlayCanvas1.ActualHeight/2));
-                tracker.AddRegion(new BoundingBox(0, (float)UIOverlayCanvas1.ActualHeight / 2, (float)UIOverlayCanvas1.ActualWidth, (float)UIOverlayCanvas1.ActualHeight/2));
+                tracker.AddRegion(new BoundingBox(0, 0, xWidth, xHeight / 2));
+                tracker.AddRegion(new BoundingBox(0, xHeight / 2, xWidth, xHeight / 2));
             }
             // Load the model
             await this.LoadModelAsync();
 
+            _frameRenderer = new FrameRenderer(VideoPreview);
 
 
             // Start the camera video preview
             await StartPreviewAsync();
         }
-
 
         /// <summary>
         /// Try to retrieve the information for the camera by panel
@@ -199,7 +220,19 @@ namespace ContainerDetector
             {
                 // Try to get the rear camera
                 var cameraDevice = await FindCameraDeviceByPanelAsync(Windows.Devices.Enumeration.Panel.Back);
-                var settings = new MediaCaptureInitializationSettings { VideoDeviceId = cameraDevice.Id };
+                var settings = new MediaCaptureInitializationSettings { 
+                    VideoDeviceId = cameraDevice.Id,
+
+                    // This media capture has exclusive control of the source.
+                    SharingMode = MediaCaptureSharingMode.ExclusiveControl,
+
+                    // Set to CPU to ensure frames always contain CPU SoftwareBitmap images,
+                    // instead of preferring GPU D3DSurface images.
+                    MemoryPreference = MediaCaptureMemoryPreference.Cpu,
+
+                    // Capture only video. Audio device will not be initialized.
+                    StreamingCaptureMode = StreamingCaptureMode.Video,
+                };
                 // Setup video capture from the camera
                 mediaCapture = new MediaCapture();
                 await mediaCapture.InitializeAsync(settings);
@@ -210,13 +243,39 @@ namespace ContainerDetector
                 var frameSource = this.mediaCapture.FrameSources.Where(
                     source => source.Value.Info.SourceKind == MediaFrameSourceKind.Color)
                     .First();
-                this.frameReader =
-                    await this.mediaCapture.CreateFrameReaderAsync(frameSource.Value);
-                
-                // Set up handler for frames
-                this.frameReader.FrameArrived += OnFrameArrived;
-                // Start the FrameReader
-                await this.frameReader.StartAsync();
+                //this.frameReader = await this.mediaCapture.CreateFrameReaderAsync(frameSource.Value);
+
+                _source = frameSource.Value;
+
+                if (_source != null)
+                {
+                    // Ask the MediaFrameReader to use a subtype that we can render.
+                    string requestedSubtype = FrameRenderer.GetSubtypeForFrameReader(_source.Info.SourceKind, _source.CurrentFormat);
+                    if (requestedSubtype != null)
+                    {
+                        this.frameReader = await mediaCapture.CreateFrameReaderAsync(_source, requestedSubtype);
+
+                        // Set up handler for frames
+                        this.frameReader.FrameArrived += OnFrameArrived;
+                        // Start the FrameReader
+                       
+                        MediaFrameReaderStartStatus result = await this.frameReader.StartAsync();
+                        //_logger.Log($"Start reader with result: {result}");
+
+                        if (result == MediaFrameReaderStartStatus.Success)
+                        {
+                            _streaming = true;
+                           
+                        }
+                        //_logger.Log($"Reader created on source: {_source.Info.Id}");
+                    }
+                    else
+                    {
+                        //_logger.Log($"Cannot render current format on source: {_source.Info.Id}");
+                    }
+                }
+
+               
             }
             catch (UnauthorizedAccessException)
             {
@@ -234,8 +293,8 @@ namespace ContainerDetector
             try
             {
                 // Wire up the video capture to the CaptureElement to display the video preview
-                VideoPreview.Source = mediaCapture;
-                await mediaCapture.StartPreviewAsync();
+                //VideoPreview.Source = mediaCapture;
+                //await mediaCapture.StartPreviewAsync();
                 isPreviewing = true;
             }
             catch (System.IO.FileLoadException)
@@ -280,7 +339,7 @@ namespace ContainerDetector
             {
                 if (isPreviewing)
                 {
-                    await mediaCapture.StopPreviewAsync();
+                    //await mediaCapture.StopPreviewAsync();
                 }
 
                 await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
@@ -334,8 +393,9 @@ namespace ContainerDetector
                 try
                 {
                     using (var frame = sender.TryAcquireLatestFrame())
-                    using (var videoFrame = frame.VideoMediaFrame?.GetVideoFrame())
                     {
+                        var bmp = _frameRenderer.ProcessFrame(frame);
+                        var videoFrame = VideoFrame.CreateWithSoftwareBitmap(bmp);
                         if (videoFrame != null)
                         {
                             // If there is a frame, set it as input to the model
@@ -360,6 +420,11 @@ namespace ContainerDetector
                             await this.ProcessOutputAsync(evalOutput);*/
 
                         }
+                        /*
+                        using (var videoFrame = frame.VideoMediaFrame?.GetVideoFrame())
+                        {  
+                        }
+                        */
                     }
                 }
                 finally

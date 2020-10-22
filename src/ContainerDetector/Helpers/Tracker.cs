@@ -13,7 +13,7 @@ namespace ContainerDetector.Helpers
     {
         public List<RegionData> Regions { get; set; }
         readonly TimeSpan TimeLimit = new TimeSpan(0, 0, 5);
-        const int DistanceLimit = 300; // in pixels
+        const int DistanceLimit = 100; // in pixels
         public List<TrackedObject> Objects { get; set; }
 
         public Point[] Area { get; set; }

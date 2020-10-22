@@ -3,13 +3,14 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:ContainerDetector"
+      Width="1200" Height="900"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d" 
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-        <Grid>
-        <CaptureElement x:Name="VideoPreview" SizeChanged="VideoPreview_SizeChanged" HorizontalAlignment="Center" VerticalAlignment="Top"/>
-        <Canvas Name="UIOverlayCanvas1" Canvas.ZIndex="0" HorizontalAlignment="Center" VerticalAlignment="Top" />
+        <Grid Name="Grid1">
+        <Image Name="VideoPreview" Margin="0,0,0,0" SizeChanged="VideoPreview_SizeChanged" HorizontalAlignment="Center" VerticalAlignment="Top"/>
+        <Canvas Name="UIOverlayCanvas1"  Margin="0,0,0,0" Canvas.ZIndex="0" HorizontalAlignment="Center" VerticalAlignment="Top" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom">
             <StackPanel.Resources>
                 <Style TargetType="TextBlock">
@@ -24,7 +25,8 @@
                 <TextBlock x:Name="StatusBlock" TextWrapping="Wrap"/>
                 <TextBlock x:Name="TxtCounter" TextWrapping="Wrap"/>
             </StackPanel>
+           
         </StackPanel>
-    </Grid>
+        </Grid>
 
 </Page>
